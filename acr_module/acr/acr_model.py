@@ -2,6 +2,7 @@ import numpy as np
 
 import tensorflow as tf
 
+from han.model import Model
 
 def multi_label_predictions_binarizer(predictions, threshold=0.5):
     predictions = tf.sigmoid(predictions)
@@ -46,6 +47,9 @@ class ACR_Model:
 
                     #tf.summary.histogram('multi_hot', 
                     #              values=tf.reduce_sum(metadata_features[:,1:], axis=1))
+            print('debugging model')
+            print(dir(features['text']))
+            print(initializer(params['embedding_initializer']))
 
 
             with tf.variable_scope("input_word_embeddings"):
@@ -63,6 +67,8 @@ class ACR_Model:
                     content_features = self.cnn_feature_extractor(input_text_layer)
                 elif text_feature_extractor.upper() == 'RNN':
                     content_features = self.rnn_feature_extractor(input_text_layer, features['text_length'])
+                elif text_feature_extractor.upper() == 'HAN':
+                    content_features = self.han_feature_extractor(input_text_layer)
                 else:
                     raise Exception('Text feature extractor option invalid! Valid values are: CNN, RNN')
 
@@ -235,6 +241,7 @@ class ACR_Model:
 
     def rnn_feature_extractor(self, input_text_layer, text_lengths):
         with tf.variable_scope("LSTM"):
+            # BasicLSTMCELL parameter is rnn_units
             lstm_cell = tf.nn.rnn_cell.BasicLSTMCell(384)
 
             # create the complete LSTM
@@ -244,3 +251,14 @@ class ACR_Model:
             # get the final hidden states of dimensionality [batch_size x rnn_units]
             rnn_final_states = final_states.h
             return rnn_final_states
+
+    def han_feature_extractor(self, input_text_layer):
+        with tf.variable_scope("HAN"):
+            han_model = Model(100, 100, 200, 200, 5, 0.05, None)
+            han_model_output = han_model.sent_outputs
+
+            return han_model_output
+
+
+if __name__ == '__main__':
+    print('funcionou')

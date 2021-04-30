@@ -17,6 +17,8 @@ tf.logging.set_verbosity(tf.logging.INFO)
 
 RANDOM_SEED=42
 
+train_writer = tf.summary.FileWriter('/home/victor/tcc/chameleon_old/chameleon_recsys/logs/train')
+
 #Control params
 #tf.flags.DEFINE_string('data_dir', default='',
 #                    help='Directory where the dataset is located')
@@ -110,7 +112,6 @@ def create_multihot_feature(features, column_name, features_config):
 
 PREDICTIONS_PREFIX = "predictions-"
 def acr_model_fn(features, labels, mode, params):  
-
     #keywords_column  = create_multihot_feature(features, 'keywords', params['features_config'])
     concepts_column  = create_multihot_feature(features, 'concepts', params['features_config'])
     entities_column  = create_multihot_feature(features, 'entities', params['features_config'])
@@ -177,7 +178,13 @@ def acr_model_fn(features, labels, mode, params):
                                     show_dataflow=True,
                                     show_memory=False)
         training_hooks=[profile_hook]
+
+    summary_hook = tf.train.SummarySaverHook(
+                                    20,
+                                    summary_writer=train_writer,
+                                    summary_op=tf.summary.merge_all())
     
+    training_hooks.append(summary_hook)
 
     return tf.estimator.EstimatorSpec(
               mode=mode,
@@ -333,12 +340,14 @@ def main(unused_argv):
 
         tf.logging.info("Training articles on TFRecords from {} to {}".format(train_files[0],
                                                                     train_files[-1]))
+        
+        train_writer.add_graph(tf.get_default_graph().as_graph_def())
         acr_model.train(input_fn=lambda: prepare_dataset(files=train_files,
                                                   features_config=features_config,
                                                   batch_size=FLAGS.batch_size, 
                                                   epochs=FLAGS.training_epochs, 
                                                   shuffle_dataset=True, 
-                                                  shuffle_buffer_size=10000))
+                                                  shuffle_buffer_size=3000))
 
         #The objective is to overfitting this network, so that the ACR embedding represent well the articles content
         tf.logging.info('Evaluating model - TRAIN SET')

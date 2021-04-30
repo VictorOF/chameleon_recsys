@@ -1,7 +1,7 @@
 #!/bin/bash
-DATA_DIR="[REPLACE BY THE ADRESSA ARTICLES DATASET PATH]" && \
+DATA_DIR="/home/victor/tcc/chameleon_old/chameleon_recsys/data" && \
 python3 -m acr.preprocessing.acr_preprocess_adressa \
-	--input_articles_folder_path ${DATA_DIR}/data/contentdata \
+	--input_articles_folder_path ${DATA_DIR}/contentdata/home/lemeiz/content_refine \
  	--input_word_embeddings_path ${DATA_DIR}/word_embeddings/w2v_skipgram_no_lemma_aviskorpus_nowac_nbdigital/model.txt \
  	--vocab_most_freq_words 100000 \
 	--max_words_length 1000 \

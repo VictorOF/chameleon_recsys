@@ -1,6 +1,6 @@
 #!/bin/bash
 
-DATA_DIR="[REPLACE BY THE ADRESSA ARTICLES DATASET PATH]" && \
+DATA_DIR="/home/victor/tcc/chameleon_old/chameleon_recsys/data" && \
 JOB_PREFIX=adressa && \
 JOB_ID=`whoami`_${JOB_PREFIX}_`date '+%Y_%m_%d_%H%M%S'` && \
 MODEL_DIR='/tmp/chameleon/addressa/jobs/'${JOB_ID} && \

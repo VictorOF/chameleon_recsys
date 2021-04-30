@@ -12,8 +12,7 @@ def parse_sequence_example(example, features_config, truncate_sequence_length=30
     context_features = {
         "article_id": tf.FixedLenFeature([], dtype=tf.int64),
         "publisher_id": tf.FixedLenFeature([], dtype=tf.int64),
-        "category_id": tf.FixedLenFeature([], dtype=tf.int64),
-        "created_at_ts": tf.FixedLenFeature([], dtype=tf.int64),
+        "category_id": tf.FixedLenFeature([], dtype=tf.int64), "created_at_ts": tf.FixedLenFeature([], dtype=tf.int64),
         "text_length": tf.FixedLenFeature([], dtype=tf.int64),
     }
     '''
