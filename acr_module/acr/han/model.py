@@ -1,33 +1,42 @@
+"""
+This code was not implemented by me. It is an implementation find in: https://github.com/tqtg/hierarchical-attention-networks
+"""
 import tensorflow as tf
 import tensorflow.contrib.rnn as rnn
-from han.layers import bidirectional_rnn, attention
-from han.utils import get_shape, batch_doc_normalize
+from acr.han.layers import bidirectional_rnn, attention
+from acr.han.utils import get_shape, batch_doc_normalize
 
 
 class Model:
-  def __init__(self, cell_dim, att_dim, vocab_size, emb_size, num_classes, dropout_rate, pretrained_embs):
+  def __init__(self, cell_dim, att_dim, vocab_size, emb_size, dropout_rate, pretrained_embs, inputs):
     self.cell_dim = cell_dim
     self.att_dim = att_dim
     self.emb_size = emb_size
     self.vocab_size = vocab_size
-    self.num_classes = num_classes
+    # self.num_classes = num_classes
     self.dropout_rate = dropout_rate
     self.pretrained_embs = pretrained_embs
 
-    self.docs = tf.placeholder(shape=(None, None, None), dtype=tf.int32, name='docs')
-    self.sent_lengths = tf.placeholder(shape=(None,), dtype=tf.int32, name='sent_lengths')
-    self.word_lengths = tf.placeholder(shape=(None, None), dtype=tf.int32, name='word_lengths')
-    self.max_word_length = tf.placeholder(dtype=tf.int32, name='max_word_length')
-    self.max_sent_length = tf.placeholder(dtype=tf.int32, name='max_sent_length')
-    self.labels = tf.placeholder(shape=(None), dtype=tf.int32, name='labels')
-    self.is_training = tf.placeholder(dtype=tf.bool, name='is_training')
+    self.docs = inputs['docs']
+    self.sent_lengths = inputs['sent_lengths']
+    self.word_lengths = inputs['word_lengths']
+    self.max_word_length = inputs['max_word_length']
+    self.max_sent_length = inputs['max_sent_length']
+    self.is_training = inputs['is_training']
+    # self.docs = tf.placeholder(shape=(None, None, None), dtype=tf.int32, name='docs')
+    # self.sent_lengths = tf.placeholder(shape=(None,), dtype=tf.int32, name='sent_lengths')
+    # self.word_lengths = tf.placeholder(shape=(None, None), dtype=tf.int32, name='word_lengths')
+    # self.max_word_length = tf.placeholder(dtype=tf.int32, name='max_word_length')
+    # self.max_sent_length = tf.placeholder(dtype=tf.int32, name='max_sent_length')
+    # self.labels = tf.placeholder(shape=(None), dtype=tf.int32, name='labels')
+    # self.is_training = tf.placeholder(dtype=tf.bool, name='is_training')
     
     self.print = tf.print(tf.shape(self.docs))
 
     self._init_embedding()
     self._init_word_encoder()
     self._init_sent_encoder()
-    self._init_classifier()
+    # self._init_classifier()
 
   def _init_embedding(self):
     with tf.variable_scope('embedding'):
@@ -98,9 +107,9 @@ class Model:
                                                  sequence_lengths=self.sent_lengths)
       self.sent_outputs = tf.layers.dropout(sent_outputs, self.dropout_rate, training=self.is_training)
 
-  def _init_classifier(self):
-    with tf.variable_scope('classifier'):
-      self.logits = tf.layers.dense(inputs=self.sent_outputs, units=self.num_classes, name='logits')
+#   def _init_classifier(self):
+#     with tf.variable_scope('classifier'):
+      # self.logits = tf.layers.dense(inputs=self.sent_outputs, units=self.num_classes, name='logits')
 
 
   """ Transform the batches coming from dataset in the model input

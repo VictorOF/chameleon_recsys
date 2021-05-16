@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from han.utils import get_shape
+from acr.han.utils import get_shape
 
 try:
   from tensorflow.contrib.rnn import LSTMStateTuple

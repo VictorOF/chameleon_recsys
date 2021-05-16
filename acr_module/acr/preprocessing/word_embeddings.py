@@ -5,7 +5,7 @@ from ..utils import serialize
 from ..acr_commons import PAD_TOKEN, UNK_TOKEN
 
 def load_word_embeddings(path, binary=True):
-    w2v_model = KeyedVectors.load_word2vec_format(path, binary=binary)
+    w2v_model = KeyedVectors.load_word2vec_format(path, binary=binary, encoding='cp865')
     return w2v_model
 
 def process_word_embedding_for_corpus_vocab(w2v_model, words_freq, 

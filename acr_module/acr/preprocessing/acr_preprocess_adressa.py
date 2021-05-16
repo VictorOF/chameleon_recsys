@@ -11,10 +11,11 @@ from sklearn.utils import class_weight
 
 import tensorflow as tf
 
-from ..tf_records_management import export_dataframe_to_tf_records, make_sequential_feature
-from ..utils import serialize, chunks, get_categ_encoder_from_values, encode_categ_feature
-from .tokenization import tokenize_articles, nan_to_str, convert_tokens_to_int, get_words_freq
+from ..tf_records_management import export_dataframe_to_tf_records, make_sequential_feature 
+from ..utils import serialize, chunks, get_categ_encoder_from_values, encode_categ_feature, break_list_of_list
+from .tokenization import tokenize_articles, nan_to_str, convert_tokens_to_int, get_words_freq, convert_sent_tokens_to_int
 from .word_embeddings import load_word_embeddings, process_word_embedding_for_corpus_vocab, save_word_vocab_embeddings
+# import han_preprocess
 
 def create_args_parser():
     parser = argparse.ArgumentParser()
@@ -54,7 +55,10 @@ def create_args_parser():
     parser.add_argument(
         '--vocab_most_freq_words', type=int, default=100000,
         help='Most frequent words to keep in vocab')
-
+    
+    parser.add_argument(
+        '--experiment_network', default='RNN',
+        help='Type of network to execute')
     return parser
 
 parser = create_args_parser()
@@ -104,11 +108,19 @@ def parse_content(line):
     else:
         heading = [content_raw['heading']]
     
+    replaced_heading = '. '.join(heading).replace(u'\xad','').replace('"', '')
+
+
+    replaced_text = content_raw['body'].replace(u'\xad','').replace('"', '')
+    replaced_title = content_raw['title'].replace(u'\xad','').replace('"', '')
+    replaced_teaser = content_raw['teaset'].replace(u'\xad','').replace('"', '')
+ 
+
     textual_highlights = "{} | {} | {} | {}".format(content_raw['title'], 
-                                                            content_raw['teaser'], 
-                                                            '. '.join(heading),
-                                                            content_raw['body']) \
-                        .replace(u'\xad','').replace('"', '')
+                                                        content_raw['teaser'], 
+                                                        '. '.join(heading),
+                                                        content_raw['body']) \
+                    .replace(u'\xad','').replace('"', '')
     
     new_content = {'id': content_raw['id'],
                    'url': content_raw['url'],
@@ -128,6 +140,10 @@ def parse_content(line):
                    'category1': content_raw['category1'] if 'category1' in content_raw else '', #126 unique
                    'category2': content_raw['category2'] if 'category2' in content_raw else '', #75 unique
                    'keywords': content_raw['keywords'], #6489 unique
+                   'text': replaced_text,
+                   'title': replaced_title,
+                   'teaser': replaced_teaser, 
+                   'heading': replaced_heading
                   }
 
         
@@ -150,6 +166,8 @@ def load_contents_from_files_list(root_path, files_list):
     total_contents = 0
     invalid_contents_count = 0
     articles = []
+    
+    # parse_content_fn = han_preprocess.parse_content if args.experiment_network == "HAN" else parse_content 
 
     for idx, filename in enumerate(files_list):                
         file_content = parse_content_file(os.path.join(root_path, filename), parse_content)
@@ -166,7 +184,7 @@ def load_contents_from_files_list(root_path, files_list):
 FILES_BY_CHUNK = 5000
 JOBS_TO_LOAD_FILES = 4
 def load_contents_from_folder(path):
-    articles_files_chunks = chunks(sorted(os.listdir(path)), FILES_BY_CHUNK)
+    articles_files_chunks = chunks(sorted(os.listdir(path)[:int(len(os.listdir(path))*0.03)]), FILES_BY_CHUNK)
     #articles_files_chunks = [list(articles_files_chunks)[0]]
 
     #Starting 4 processes to speed up files parsing
@@ -218,6 +236,7 @@ def get_encoder_from_freq_values_in_list_column(series, min_freq=100):
 
 def transform_categorical_list_column(series, encoder):
     return series.apply(lambda l: list([encoder[val] for val in l if val in encoder]))    
+
 
 def comma_sep_values_to_list(value):
     return list([y.strip() for y in value.split(',') if y.strip() != ''])
@@ -299,17 +318,52 @@ def process_cat_features(news_df):
     return cat_features_encoders, labels_class_weights
 
 
-def tokenize_norwegian_article(text):
+def tokenize_norwegian_article(text, sentence=False):
     words_tokenized = []
-    for sentence in nltk.tokenize.sent_tokenize(text, language='norwegian'):
-        words_tokenized.extend(nltk.tokenize.word_tokenize(sentence, language='norwegian'))        
-    return words_tokenized[:args.max_words_length] #Truncating to the maximum number of tokens
+    # sentences = text if args.experiment_network == 'HAN' else nltk.tokenize.sent_tokenize(text, language='norwegian')
+    if sentence:
+        sent_tokenized = [nltk.tokenize.word_tokenize(sent, language='norwegian') for sent in nltk.tokenize.sent_tokenize(text, language='norwegian')]
+        return sent_tokenized
+    else:
+        for sentence in nltk.tokenize.sent_tokenize(text, language='norwegian'):
+            words_tokenized.extend(nltk.tokenize.word_tokenize(sentence, language='norwegian'))        
+        return words_tokenized[:args.max_words_length] #Truncating to the maximum number of tokens
 
 
 def save_article_cat_encoders(output_path, cat_features_encoders, labels_class_weights):
     to_serialize = (cat_features_encoders, labels_class_weights)
     serialize(output_path, to_serialize)
 
+
+# def make_sequence_example_han(row):
+#     context_features = {
+#         'article_id': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['id_encoded']])),
+#         'category0': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['category0_encoded']])),
+#         'category1': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['category1_encoded']])),
+#         'author': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['author_encoded']])),
+#         'created_at_ts': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['created_at_ts']])),
+#         'text_length': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['text_length']])),
+#         #Only for debug
+#         'article_id_original': tf.train.Feature(bytes_list=tf.train.BytesList(value=[row['id'].encode()])),
+#         'url': tf.train.Feature(bytes_list=tf.train.BytesList(value=[row['url'].encode()])),
+#         'serialized_text': tf.train.Feature(bytes_list=tf.train.BytesList(value=[row['serialized_text']]))
+#     }
+#  
+#     context = tf.train.Features(feature=context_features)
+# 
+#     sequence_features = {
+#         'keywords': make_sequential_feature(row["keywords_encoded"], vtype=int),
+#         'concepts': make_sequential_feature(row["concepts_encoded"], vtype=int),
+#         'entities': make_sequential_feature(row["entities_encoded"], vtype=int),
+#         'locations': make_sequential_feature(row["locations_encoded"], vtype=int),
+#         'persons': make_sequential_feature(row["persons_encoded"], vtype=int)
+#     }    
+# 
+#     sequence_feature_lists = tf.train.FeatureLists(feature_list=sequence_features)
+#     
+#     return tf.train.SequenceExample(feature_lists=sequence_feature_lists,
+#                                     context=context
+#                                    )    
 
 def make_sequence_example(row):
     context_features = {
@@ -319,21 +373,29 @@ def make_sequence_example(row):
         'author': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['author_encoded']])),
         'created_at_ts': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['created_at_ts']])),
         'text_length': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['text_length']])),
+        'title_lengths': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['title_lengths']])),
+        'heading_lengths': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['heading_lengths']])),
+        'teaser_lengths': tf.train.Feature(int64_list=tf.train.Int64List(value=[row['teaser_lengths']])),
         #Only for debug
         'article_id_original': tf.train.Feature(bytes_list=tf.train.BytesList(value=[row['id'].encode()])),
         'url': tf.train.Feature(bytes_list=tf.train.BytesList(value=[row['url'].encode()]))
     }
     
     context = tf.train.Features(feature=context_features)
-    
+ 
     sequence_features = {
         'text': make_sequential_feature(row["text_int"], vtype=int),
+        'title_int': make_sequential_feature(row["title_int"], vtype=int),
+        'heading_int': make_sequential_feature(row["heading_int"], vtype=int),
+        'teaser_int': make_sequential_feature(row["teaser_int"], vtype=int),
+        'pure_text_int': make_sequential_feature(row["pure_text_int"], vtype=int),
+        'pure_text_shape': make_sequential_feature(row["pure_text_shape"], vtype=int),
         'keywords': make_sequential_feature(row["keywords_encoded"], vtype=int),
         'concepts': make_sequential_feature(row["concepts_encoded"], vtype=int),
         'entities': make_sequential_feature(row["entities_encoded"], vtype=int),
         'locations': make_sequential_feature(row["locations_encoded"], vtype=int),
         'persons': make_sequential_feature(row["persons_encoded"], vtype=int)
-    }    
+    }
 
     sequence_feature_lists = tf.train.FeatureLists(feature_list=sequence_features)
     
@@ -342,8 +404,7 @@ def make_sequence_example(row):
                                    )    
 
 def main():
-    
-
+    print(args.experiment_network)
     print('Loading contents from folder: {}'.format(args.input_articles_folder_path))
     news_df = load_contents_from_folder(args.input_articles_folder_path)
     print('Total articles loaded: {}'.format(len(news_df)))
@@ -360,8 +421,20 @@ def main():
     print('Tokenizing articles...')
     tokenized_articles = tokenize_articles(news_df['text_highlights'].values, tokenization_fn=tokenize_norwegian_article)
 
+    print('Tokenizing titles')
+    tokenized_titles = tokenize_articles(news_df['title'].values, tokenization_fn=tokenize_norwegian_article)
+
+    print('Tokenizing heading')
+    tokenized_headings = tokenize_articles(news_df['heading'].values, tokenization_fn=tokenize_norwegian_article)
+
+    print('Tokenizing teaser')
+    tokenized_teasers = tokenize_articles(news_df['teaser'].values, tokenization_fn=tokenize_norwegian_article)
+
+    print('Tokenizing pure text')
+    tokenized_pure_texts = tokenize_articles(news_df['text'].values, tokenization_fn=tokenize_norwegian_article, sentence=True)
+
     print('Computing word frequencies...')
-    words_freq = get_words_freq(tokenized_articles)
+    words_freq = get_words_freq(tokenized_articles, network=args.experiment_network)
 
     print("Loading word2vec model and extracting words of this corpus' vocabulary...")
     w2v_model = load_word_embeddings(args.input_word_embeddings_path, binary=False)
@@ -378,6 +451,25 @@ def main():
     news_df['text_length'] = texts_lengths
     news_df['text_int'] = texts_int
 
+
+    title_int, title_lengths = convert_tokens_to_int(tokenized_titles, word_vocab)
+    news_df['title_lengths'] = title_lengths
+    news_df['title_int'] = title_int
+
+
+    heading_int, heading_lengths = convert_tokens_to_int(tokenized_headings, word_vocab)
+    news_df['heading_lengths'] = heading_lengths
+    news_df['heading_int'] = heading_int
+
+
+    teaser_int, teaser_lengths = convert_tokens_to_int(tokenized_teasers, word_vocab)
+    news_df['teaser_lengths'] = teaser_lengths
+    news_df['teaser_int'] = teaser_int
+
+    pure_text_int, pure_text_shape = convert_sent_tokens_to_int(tokenized_pure_texts, word_vocab)
+    news_df['pure_text_shape'] = pure_text_shape
+    news_df['pure_text_int'] = pure_text_int
+
     data_to_export_df = news_df[['id', 'url', #For debug
                                 'id_encoded', 
                                 'category0_encoded',
@@ -390,13 +482,25 @@ def main():
                                 'persons_encoded',
                                 'created_at_ts',
                                 'text_length', 
-                                'text_int']]
+                                'text_int',
+                                'title_lengths',
+                                'title_int',
+                                'heading_lengths',
+                                'heading_int',
+                                'teaser_lengths',
+                                'teaser_int',
+                                'pure_text_shape',
+                                'pure_text_int',
+                                ]]
+
 
     print('Exporting tokenized articles to TFRecords: {}'.format(args.output_tf_records_path))                                
-    export_dataframe_to_tf_records(data_to_export_df, 
-                                   make_sequence_example,
-                                   output_path=args.output_tf_records_path, 
-                                   examples_by_file=args.articles_by_tfrecord)
+#     make_sequence_fn = make_sequence_example_han if args.experiment_network == 'HAN' else make_sequence_example
+    make_sequence_fn = make_sequence_example
+    with tf.Session() as sess:
+        export_dataframe_to_tf_records(data_to_export_df, 
+                                   make_sequence_fn,
+                                   output_path=args.output_tf_records_path, examples_by_file=args.articles_by_tfrecord)
 
 if __name__ == '__main__':
     main()

@@ -6,7 +6,7 @@ from .utils import merge_two_dicts, get_tf_dtype
 
 #CONTEXT_FEATURES = ['article_id', 'publisher_id', 'category_id', 'created_at_ts', 'text_length']
 
-def parse_sequence_example(example, features_config, truncate_sequence_length=300):
+def parse_sequence_example(example, features_config, truncate_sequence_length=300, truncate_sent=30, truncate_word=50):
     # Define how to parse the example
     '''
     context_features = {
@@ -30,12 +30,15 @@ def parse_sequence_example(example, features_config, truncate_sequence_length=30
         context_features=single_features,
         example_name="example"
     )
-
+    # tf.print(sequence_parsed['text'])
     #Truncating max text size
     sequence_parsed['text'] = sequence_parsed['text'][:truncate_sequence_length] 
-    
+    sequence_parsed['pure_text_int'] = tf.reshape(sequence_parsed['pure_text_int'], sequence_parsed['pure_text_shape'])
+    # tf.print(sequence_parsed['pure_text_int'])
+    # tf.print(sequence_parsed['pure_text_shape'])
+    # sequence_parsed['pure_text_int'] = tf.slice(sequence_parsed['pure_text_int'], [0, 0], [truncate_sent, truncate_word])
+    sequence_parsed['pure_text_int'] = sequence_parsed['pure_text_int'][:truncate_sent,:truncate_word]
     merged_features = merge_two_dicts(single_parsed, sequence_parsed)
-
     #In order the pad the dataset, I had to use this hack to expand scalars to vectors.
     expand_features(merged_features, feature_to_expand=features_config['single_features'].keys())
 
@@ -93,6 +96,8 @@ def make_dataset(path, features_config, batch_size=128, num_map_threads=None, tr
 
     features_shapes_single = {key: 1 for key in features_config['single_features']}
     features_shapes_sequence = {key: tf.TensorShape([None]) for key in features_config['sequence_features']}
+    features_shapes_sequence['pure_text_shape'] = 2
+    features_shapes_sequence['pure_text_int'] = tf.TensorShape([None, None])
     features_shapes = merge_two_dicts(features_shapes_single, features_shapes_sequence)
 
     #Batch the dataset so that we get batch_size examples in each batch.

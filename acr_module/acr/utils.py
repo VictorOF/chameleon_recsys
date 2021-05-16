@@ -3,6 +3,16 @@ import pickle
 from time import time
 
 
+    
+def break_list_of_list(list_of_list):
+    values_list = []
+    size_list = []
+    for element in list_of_list:
+        values_list = values_list + element
+        size_list.append(len(element))
+
+    return (values_list, size_list)
+
 def serialize(filename, obj):
     #with open(filename, 'wb') as handle:
     with tf.gfile.Open(filename, 'wb') as handle:
@@ -77,3 +87,6 @@ def encode_categ_feature(value, encoder_dict):
         return encoder_dict[value]
     else:
         return encoder_dict[get_unfrequent_token()]
+
+if __name__ == '__main__':
+   print(break_list_of_list([[1], [2], [3, 4, 5]]))

@@ -1,8 +1,7 @@
 import numpy as np
-
 import tensorflow as tf
 
-from han.model import Model
+from acr.han.model import Model
 
 def multi_label_predictions_binarizer(predictions, threshold=0.5):
     predictions = tf.sigmoid(predictions)
@@ -15,8 +14,12 @@ class ACR_Model:
         self.params = params
         dropout_keep_prob = params['dropout_keep_prob']
         l2_reg_lambda = params['l2_reg_lambda']
-
+        dropout_rate=1.0-dropout_keep_prob
+        embedding_matrix = params['embedding_initializer']()
+        word_vocab = params['word_vocab']()
         training = mode == tf.estimator.ModeKeys.TRAIN
+        pure_text = features['pure_text_int']
+
 
         with tf.variable_scope("main", initializer=tf.contrib.layers.variance_scaling_initializer()):
             input_features = []
@@ -47,10 +50,6 @@ class ACR_Model:
 
                     #tf.summary.histogram('multi_hot', 
                     #              values=tf.reduce_sum(metadata_features[:,1:], axis=1))
-            print('debugging model')
-            print(dir(features['text']))
-            print(initializer(params['embedding_initializer']))
-
 
             with tf.variable_scope("input_word_embeddings"):
                 input_text_layer = tf.contrib.layers.embed_sequence(
@@ -62,13 +61,12 @@ class ACR_Model:
                                 )
 
             with tf.variable_scope("textual_features_representation"):
-                
                 if text_feature_extractor.upper() == 'CNN':
                     content_features = self.cnn_feature_extractor(input_text_layer)
-                elif text_feature_extractor.upper() == 'RNN':
+                elif text_feature_extractor.upper() == 'RNN': # LSTM
                     content_features = self.rnn_feature_extractor(input_text_layer, features['text_length'])
-                elif text_feature_extractor.upper() == 'HAN':
-                    content_features = self.han_feature_extractor(input_text_layer)
+                elif text_feature_extractor.upper() == 'HAN': # Hierarchical Attention Network
+                    content_features = self.han_feature_extractor(pure_text, embedding_matrix, dropout_rate, word_vocab, training)
                 else:
                     raise Exception('Text feature extractor option invalid! Valid values are: CNN, RNN')
 
@@ -131,6 +129,7 @@ class ACR_Model:
                             #If the label feature have classes weights, use the weights to deal with unbalanced classes
                             weights=tf.constant(1.0)
                             if label_column_name in labels_classes_weights:
+                                print(labels_classes_weights[label_column_name], labels[label_feature_name])
                                 weights=tf.gather(labels_classes_weights[label_column_name], labels[label_feature_name])
                                 
                             label_loss = tf.reduce_mean(tf.losses.sparse_softmax_cross_entropy(logits=labels_logits[label_feature_name], 
@@ -252,13 +251,37 @@ class ACR_Model:
             rnn_final_states = final_states.h
             return rnn_final_states
 
-    def han_feature_extractor(self, input_text_layer):
+    def han_feature_extractor(self, pure_text, embedding_matrix, dropout_rate, word_vocab, is_training):
+        pure_text = tf.cast(pure_text, tf.int32)
+        word_lengths = tf.math.count_nonzero(pure_text, axis=2)
+        sent_lengths = tf.gather(tf.math.count_nonzero(pure_text, axis=1), [0], axis=1)
+        sent_lengths = tf.reshape(sent_lengths, [-1])
+        print('----------')
+        print(sent_lengths)
+        pure_text_shape = tf.shape(pure_text)
+        max_word_length = tf.reduce_sum(tf.gather(pure_text_shape, [2], axis=0))
+        max_sent_length = tf.reduce_sum(tf.gather(pure_text_shape, [1], axis=0))
+        inputs = {
+            'docs': pure_text,
+            'sent_lengths': sent_lengths,
+            'word_lengths': word_lengths,
+            'max_word_length': max_word_length,
+            'max_sent_length': max_sent_length,
+            'is_training': is_training
+        }
+
+        
         with tf.variable_scope("HAN"):
-            han_model = Model(100, 100, 200, 200, 5, 0.05, None)
+            han_model = Model(100, 100, len(embedding_matrix), len(embedding_matrix[0]), dropout_rate, embedding_matrix, inputs)
+            han_model.docs = pure_text
+            han_model.sent_lengths = sent_lengths
+            han_model.word_lengths = word_lengths
+            han_model.max_word_length = max_word_length
+            han_model.max_sent_length = max_sent_length
+            # han_model.labels = labels # what to do with labels
+            han_model.is_training = is_training
             han_model_output = han_model.sent_outputs
 
+            # tf.dense()
             return han_model_output
 
-
-if __name__ == '__main__':
-    print('funcionou')

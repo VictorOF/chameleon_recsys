@@ -63,6 +63,9 @@ def get_session_features_config(acr_label_encoders):
                     'author': {'type': 'categorical', 'dtype': 'int'},
                     'created_at_ts': {'type': 'numerical', 'dtype': 'int'},
                     'text_length': {'type': 'numerical', 'dtype': 'int'},
+                    'title_lengths': {'type': 'numerical', 'dtype': 'int'},
+                    'teaser_lengths': {'type': 'numerical', 'dtype': 'int'},
+                    'heading_lengths': {'type': 'numerical', 'dtype': 'int'}
                     },
                 'sequence_features': {
                     'text': {'type': 'numerical', 'dtype': 'int'},
@@ -71,6 +74,11 @@ def get_session_features_config(acr_label_encoders):
                     'entities': {'type': 'categorical', 'dtype': 'int'},
                     'locations': {'type': 'categorical', 'dtype': 'int'},
                     'persons': {'type': 'categorical', 'dtype': 'int'},
+                    'title_int': {'type': 'categorical', 'dtype': 'int'},
+                    'heading_int': {'type': 'categorical', 'dtype': 'int'},
+                    'teaser_int': {'type': 'categorical', 'dtype': 'int'},
+                    'pure_text_int': {'type': 'categorical', 'dtype': 'int'},
+                    'pure_text_shape': {'type': 'categorical', 'dtype': 'int'},
                     },
                 'label_features': {
                     'category0': {'type': 'categorical', 'dtype': 'int', 'classification_type': 'multiclass', 'feature_weight_on_loss': 1.0},
@@ -102,7 +110,7 @@ def load_acr_preprocessing_assets(acr_label_encoders_path, word_vocab_embeddings
     (word_vocab, word_embeddings_matrix) = deserialize(word_vocab_embeddings_path)
     tf.logging.info("Read word embeddings: {}".format(word_embeddings_matrix.shape))  
 
-    return acr_label_encoders, labels_class_weights, word_embeddings_matrix
+    return acr_label_encoders, labels_class_weights, word_embeddings_matrix, word_vocab
 
 def create_multihot_feature(features, column_name, features_config):
     column = tf.feature_column.indicator_column(tf.feature_column.categorical_column_with_identity(
@@ -170,7 +178,7 @@ def acr_model_fn(features, labels, mode, params):
             predictions["{}{}".format(PREDICTIONS_PREFIX, feature_name)] = acr_model.labels_predictions[feature_name]
 
         #prediction_hooks = [ACREmbeddingExtractorHook(mode, acr_model)]  
-        
+    
     training_hooks = []
     if params['enable_profiler_hook']:
         profile_hook = tf.train.ProfilerHook(save_steps=100,
@@ -179,13 +187,13 @@ def acr_model_fn(features, labels, mode, params):
                                     show_memory=False)
         training_hooks=[profile_hook]
 
-    summary_hook = tf.train.SummarySaverHook(
-                                    20,
-                                    summary_writer=train_writer,
-                                    summary_op=tf.summary.merge_all())
-    
-    training_hooks.append(summary_hook)
-
+#     summary_hook = tf.train.SummarySaverHook(
+#                                     20,
+#                                     summary_writer=train_writer,
+#                                     summary_op=tf.summary.merge_all())
+#     
+#     training_hooks.append(summary_hook)
+# 
     return tf.estimator.EstimatorSpec(
               mode=mode,
               predictions=predictions,
@@ -196,15 +204,19 @@ def acr_model_fn(features, labels, mode, params):
               #prediction_hooks=prediction_hooks,
               )
 
-def build_acr_estimator(model_output_dir, word_embeddings_matrix, features_config, labels_class_weights):
+def build_acr_estimator(model_output_dir, word_embeddings_matrix, features_config, labels_class_weights, word_vocab):
 
 
     def word_embeddings_initializer(shape=None, dtype=tf.float32, partition_info=None):
         assert dtype is tf.float32
         return word_embeddings_matrix
 
+    def word_vocab_initializer():
+        return word_vocab
+
     params = {#'embedding_initializer': tf.random_uniform_initializer(-1.0, 1.0),
               'text_feature_extractor': FLAGS.text_feature_extractor,  
+              'word_vocab': word_vocab_initializer,
               'embedding_initializer': word_embeddings_initializer,              
               'vocab_size': word_embeddings_matrix.shape[0],
               'word_embedding_size': word_embeddings_matrix.shape[1],
@@ -227,6 +239,7 @@ def build_acr_estimator(model_output_dir, word_embeddings_matrix, features_confi
                                         session_config=session_config
                                        )
 
+    
     acr_cnn_classifier = tf.estimator.Estimator(model_fn=acr_model_fn,
                                             model_dir=model_output_dir,
                                             params=params, 
@@ -311,7 +324,7 @@ def main(unused_argv):
             tf.logging.info('Saving model outputs to {}'.format(model_output_dir))
 
         tf.logging.info('Loading ACR preprocessing assets')
-        acr_label_encoders, labels_class_weights, word_embeddings_matrix = \
+        acr_label_encoders, labels_class_weights, word_embeddings_matrix, word_vocab = \
             load_acr_preprocessing_assets(FLAGS.input_label_encoders_path, 
                                           FLAGS.input_word_vocab_embeddings_path)   
 
@@ -324,7 +337,8 @@ def main(unused_argv):
         acr_model = build_acr_estimator(model_output_dir, 
                                             word_embeddings_matrix, 
                                             features_config,
-                                            labels_class_weights)
+                                            labels_class_weights,
+                                            word_vocab)
 
 
         
